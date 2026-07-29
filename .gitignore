@@ -1,0 +1,36 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+kubeconfig
+kubeconfig.*
+
+# Go
+bin/
+dist/
+coverage/
+coverage.out
+*.test
+*.prof
+
+# Runtime data
+data/
+tmp/
+*.log
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Operating systems
+.DS_Store
+Thumbs.db
+
+# Local deployment overrides
+docker-compose.override.yml
+values.local.yaml
