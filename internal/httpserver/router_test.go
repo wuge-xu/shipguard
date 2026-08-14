@@ -44,3 +44,32 @@ func TestHealthRouteRejectsPost(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
 	}
 }
+func TestRouterAddsRequestID(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
+	rec := httptest.NewRecorder()
+
+	NewHandler().ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("X-Request-ID"); got == "" {
+		t.Fatal("X-Request-ID response header is empty")
+	}
+}
+
+func TestRouterPreservesRequestID(t *testing.T) {
+	const requestID = "demo-123"
+
+	req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
+	req.Header.Set("X-Request-ID", requestID)
+
+	rec := httptest.NewRecorder()
+
+	NewHandler().ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("X-Request-ID"); got != requestID {
+		t.Fatalf(
+			"X-Request-ID = %q, want %q",
+			got,
+			requestID,
+		)
+	}
+}
