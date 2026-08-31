@@ -14,9 +14,24 @@ func NewHandler() http.Handler {
 	mux.HandleFunc("GET /health/live", health.Live)
 	mux.HandleFunc("GET /health/ready", health.Ready)
 
-	handler := middleware.AccessLog(
+	return withMiddleware(
 		slog.Default(),
 		mux,
+	)
+}
+
+func withMiddleware(
+	logger *slog.Logger,
+	next http.Handler,
+) http.Handler {
+	handler := middleware.Recovery(
+		logger,
+		next,
+	)
+
+	handler = middleware.AccessLog(
+		logger,
+		handler,
 	)
 
 	return middleware.RequestID(handler)
