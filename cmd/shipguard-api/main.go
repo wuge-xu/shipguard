@@ -16,6 +16,17 @@ import (
 )
 
 func main() {
+	logger := slog.New(
+		slog.NewJSONHandler(
+			os.Stdout,
+			&slog.HandlerOptions{
+				Level: slog.LevelInfo,
+			},
+		),
+	)
+
+	slog.SetDefault(logger)
+
 	signalCtx, stop := signal.NotifyContext(
 		context.Background(),
 		os.Interrupt,
@@ -24,7 +35,11 @@ func main() {
 	defer stop()
 
 	if err := run(signalCtx); err != nil {
-		slog.Error("shipguard-api stopped with error", "error", err)
+		slog.Error(
+			"shipguard-api stopped with error",
+			"error",
+			err,
+		)
 		os.Exit(1)
 	}
 }
@@ -40,7 +55,11 @@ func run(ctx context.Context) error {
 		httpserver.NewHandler(),
 	)
 
-	return serve(ctx, server, cfg.ShutdownTimeout)
+	return serve(
+		ctx,
+		server,
+		cfg.ShutdownTimeout,
+	)
 }
 
 func serve(
@@ -51,7 +70,12 @@ func serve(
 	serverErr := make(chan error, 1)
 
 	go func() {
-		slog.Info("starting shipguard-api", "addr", server.Addr)
+		slog.Info(
+			"starting shipguard-api",
+			"addr",
+			server.Addr,
+		)
+
 		serverErr <- server.ListenAndServe()
 	}()
 
@@ -60,9 +84,14 @@ func serve(
 		slog.Info("shutdown requested")
 
 	case err := <-serverErr:
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("serve HTTP: %w", err)
+		if err != nil &&
+			!errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf(
+				"serve HTTP: %w",
+				err,
+			)
 		}
+
 		return nil
 	}
 
@@ -73,12 +102,18 @@ func serve(
 	defer cancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("shutdown HTTP server: %w", err)
+		return fmt.Errorf(
+			"shutdown HTTP server: %w",
+			err,
+		)
 	}
 
 	if err := <-serverErr; err != nil &&
 		!errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("serve HTTP after shutdown: %w", err)
+		return fmt.Errorf(
+			"serve HTTP after shutdown: %w",
+			err,
+		)
 	}
 
 	slog.Info("shipguard-api stopped")
