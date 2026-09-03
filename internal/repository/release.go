@@ -11,7 +11,10 @@ import (
 	"github.com/wuge-xu/shipguard/internal/release"
 )
 
-var ErrReleaseNotFound = errors.New("release not found")
+var (
+	ErrReleaseNotFound        = errors.New("release not found")
+	ErrReleaseVersionConflict = errors.New("release version conflict")
+)
 
 type ReleaseRepository struct {
 	pool *pgxpool.Pool
@@ -150,4 +153,132 @@ func (r *ReleaseRepository) GetByID(
 	}
 
 	return item, nil
+}
+
+func (r *ReleaseRepository) UpdateTransition(
+	ctx context.Context,
+	current release.Release,
+	next release.Release,
+) error {
+	if err := current.Validate(); err != nil {
+		return fmt.Errorf(
+			"validate current release: %w",
+			err,
+		)
+	}
+
+	if err := next.Validate(); err != nil {
+		return fmt.Errorf(
+			"validate next release: %w",
+			err,
+		)
+	}
+
+	if current.ID != next.ID {
+		return fmt.Errorf(
+			"%w: release ID changed from %q to %q",
+			release.ErrInvalidRelease,
+			current.ID,
+			next.ID,
+		)
+	}
+
+	if next.Version != current.Version+1 {
+		return fmt.Errorf(
+			"%w: version must advance from %d to %d",
+			release.ErrInvalidRelease,
+			current.Version,
+			current.Version+1,
+		)
+	}
+
+	if err := release.ValidateTransition(
+		current.Status,
+		next.Status,
+	); err != nil {
+		return fmt.Errorf(
+			"validate persisted transition: %w",
+			err,
+		)
+	}
+
+	result, err := r.pool.Exec(
+		ctx,
+		`
+		UPDATE releases
+		SET
+			status = $1,
+			version = $2,
+			updated_at = $3
+		WHERE id = $4
+		  AND version = $5
+		`,
+		string(next.Status),
+		next.Version,
+		next.UpdatedAt,
+		current.ID,
+		current.Version,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"update release %q: %w",
+			current.ID,
+			err,
+		)
+	}
+
+	if result.RowsAffected() == 1 {
+		return nil
+	}
+
+	exists, err := r.exists(
+		ctx,
+		current.ID,
+	)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		return fmt.Errorf(
+			"%w: %s",
+			ErrReleaseNotFound,
+			current.ID,
+		)
+	}
+
+	return fmt.Errorf(
+		"%w: release %s expected version %d",
+		ErrReleaseVersionConflict,
+		current.ID,
+		current.Version,
+	)
+}
+
+func (r *ReleaseRepository) exists(
+	ctx context.Context,
+	id string,
+) (bool, error) {
+	var exists bool
+
+	err := r.pool.QueryRow(
+		ctx,
+		`
+		SELECT EXISTS (
+			SELECT 1
+			FROM releases
+			WHERE id = $1
+		)
+		`,
+		id,
+	).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf(
+			"check release %q existence: %w",
+			id,
+			err,
+		)
+	}
+
+	return exists, nil
 }
