@@ -2,6 +2,8 @@ package releaseapp
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -9,6 +11,11 @@ import (
 )
 
 type Repository interface {
+	Create(
+		ctx context.Context,
+		item release.Release,
+	) error
+
 	GetByID(
 		ctx context.Context,
 		id string,
@@ -21,9 +28,17 @@ type Repository interface {
 	) error
 }
 
+type CreateReleaseInput struct {
+	Service     string
+	Environment string
+	SourceSHA   string
+	ImageDigest string
+}
+
 type Service struct {
 	repository Repository
 	now        func() time.Time
+	newID      func() string
 }
 
 func NewService(
@@ -37,7 +52,43 @@ func NewService(
 	return &Service{
 		repository: repository,
 		now:        now,
+		newID:      newReleaseID,
 	}
+}
+
+func (s *Service) CreateRelease(
+	ctx context.Context,
+	input CreateReleaseInput,
+) (release.Release, error) {
+	item, err := release.NewRelease(
+		release.CreateParams{
+			ID:          s.newID(),
+			Service:     input.Service,
+			Environment: input.Environment,
+			SourceSHA:   input.SourceSHA,
+			ImageDigest: input.ImageDigest,
+		},
+		s.now(),
+	)
+	if err != nil {
+		return release.Release{}, fmt.Errorf(
+			"create release domain model: %w",
+			err,
+		)
+	}
+
+	if err := s.repository.Create(
+		ctx,
+		item,
+	); err != nil {
+		return release.Release{}, fmt.Errorf(
+			"persist release %q: %w",
+			item.ID,
+			err,
+		)
+	}
+
+	return item, nil
 }
 
 func (s *Service) ApproveRelease(
@@ -93,4 +144,17 @@ func (s *Service) transition(
 	}
 
 	return next, nil
+}
+
+func newReleaseID() string {
+	var buffer [16]byte
+
+	if _, err := rand.Read(buffer[:]); err == nil {
+		return "rel-" + hex.EncodeToString(buffer[:])
+	}
+
+	return fmt.Sprintf(
+		"rel-%d",
+		time.Now().UnixNano(),
+	)
 }
