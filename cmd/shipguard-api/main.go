@@ -11,8 +11,12 @@ import (
 	"syscall"
 	"time"
 
+	releaseapp "github.com/wuge-xu/shipguard/internal/application/release"
 	"github.com/wuge-xu/shipguard/internal/config"
+	"github.com/wuge-xu/shipguard/internal/database"
 	"github.com/wuge-xu/shipguard/internal/httpserver"
+	httpHandler "github.com/wuge-xu/shipguard/internal/httpserver/handler"
+	"github.com/wuge-xu/shipguard/internal/repository"
 )
 
 func main() {
@@ -47,12 +51,42 @@ func main() {
 func run(ctx context.Context) error {
 	cfg, err := config.Load()
 	if err != nil {
-		return fmt.Errorf("load config: %w", err)
+		return fmt.Errorf(
+			"load config: %w",
+			err,
+		)
 	}
+
+	pool, err := database.Open(
+		ctx,
+		cfg.DatabaseURL,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"open database: %w",
+			err,
+		)
+	}
+	defer pool.Close()
+
+	releaseRepository := repository.NewReleaseRepository(
+		pool,
+	)
+
+	releaseService := releaseapp.NewService(
+		releaseRepository,
+		nil,
+	)
+
+	releaseHandler := httpHandler.NewReleaseHandler(
+		releaseService,
+	)
 
 	server := httpserver.New(
 		cfg.HTTPAddr,
-		httpserver.NewHandler(),
+		httpserver.NewHandler(
+			releaseHandler,
+		),
 	)
 
 	return serve(
